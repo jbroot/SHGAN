@@ -1,0 +1,14 @@
+import labels
+from general import meta
+
+NOISE_DIM = 64 if meta.EXPERIMENTAL else 16
+BATCH_SIZE = 128
+WINDOW_SIZE = 32
+FEATURE_SIZE = len(labels.features)
+LABEL_SIZE = len(labels.conditionals)
+TOTAL_SIZE = FEATURE_SIZE + LABEL_SIZE
+IMG_SHAPE = (WINDOW_SIZE, TOTAL_SIZE)
+
+LEAKY_ALPHA_DEFAULT = 0.2
+DROPOUT_DEFAULT = 0.25
+MIN_MAX_RNG = (-1,1)

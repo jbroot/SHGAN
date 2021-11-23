@@ -1,0 +1,3 @@
+Synthetic versus Real Training Data & 0.077 & 0.02 & 0.886 & 0.029\\
+Synthetic versus Real Testing Data & 0.074 & 0.02 & 0.89 & 0.029\\
+Synthetic Data and Uniform Noise & 0.09 & 0.006 & 0.918 & 0.013\\
