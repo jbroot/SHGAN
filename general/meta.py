@@ -3,8 +3,6 @@ import copy
 miscDir = "misc/"
 dataDir = "datasets/"
 
-EXPERIMENTAL = False
-
 import sys
 def get_debug_flag():
     return sys.gettrace() is not None
