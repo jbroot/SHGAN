@@ -19,7 +19,7 @@ import tstr
 import postProcessing as postProc
 import labels as lbl
 import houseTypes
-import getData
+import postProcIO as ppIO
 
 meta.tf_np_behavior()
 
@@ -28,9 +28,10 @@ cdiscFile = fp.kerasModel + "TimeCWDisc.km"
 
 LOAD_FILES = True
 
-GAN_EPOCHS= 2 if meta.DEBUG else 340 #will be 350
+GAN_EPOCHS= 2 if meta.DEBUG else 10 #will be 20
 STEPS_PER_EPOCH=2 if meta.DEBUG else None
 DATA_AMT = int(1e3) if meta.DEBUG else None
+# DATA_AMT = None
 DATA_AMT_PER_HOME = int(1e2) if meta.DEBUG else None
 
 #
@@ -96,7 +97,7 @@ class CWGAN(keras.Model):
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
-    def train_step(self, dataset):
+    def train_step(self, dataset): #todo: keep same latent space for each epoch
         features, conditionals = dataset
         data = meta.x_y(features, conditionals)
         ogY = data.y
@@ -117,8 +118,7 @@ class CWGAN(keras.Model):
 
         # Train the discriminator first. The original paper recommends training
         # the discriminator for `x` more steps (typically 5) as compared to
-        # one step of the generator. Here we will train it for 3 extra steps
-        # as compared to 5 to reduce the training time.
+        # one step of the generator
         for i in range(self.d_steps):
             with tf.GradientTape() as tape:
                 # Generate fake images from the latent vector
@@ -284,13 +284,16 @@ def get_data_cgan(firstN=DATA_AMT, fit=False):
 
     cgan = get_cgan(generator, discriminator, None if allDataTf is None else allDataTf.train, fit=fit)
     if fit: cgan.plot_losses()
-    fakeHome = postProc.get_all_fixed_synthetic(allHomesConcat, cgan)
-    fakeHome.maxTimeDif = allHomesConcat.maxTimeDif
-    unNormed = postProc.back_to_real(fakeHome)
-    houseUnnormed = postProc.back_to_real(allHomesConcat)
-    unNormed.data.train.to_csv(fp.misc + "synthetic.csv", index=False)
-    houseUnnormed.data.train.to_csv(fp.misc + "real.csv", index=False)
-    return allHomesConcat, cgan, fakeHome
+    return allHomesConcat, cgan
+
+# def write_og_like_files(realHome:houseTypes.house, fakeHome:houseTypes.house):
+#     fakeHome.maxTimeDif = realHome.maxTimeDif
+#     fakeUnnormed = postProc.back_to_real(fakeHome)
+#     realUnnormed = postProc.back_to_real(realHome)
+#     fakeUnnormed.data.train.to_csv(fp.ogFormat + fakeHome.name.replace(' ', '') + ".csv", index=False)
+#     realUnnormed.data.train.to_csv(fp.ogFormat + realHome.name.replace(' ', '') + "Train.csv", index=False)
+#     realUnnormed.data.test.to_csv(fp.ogFormat + realHome.name.replace(' ', '') + "Test.csv", index=False)
+#     return fakeUnnormed, realUnnormed
 
 def run_ks_tests():
     print("Running KS tests")
@@ -332,33 +335,19 @@ def do_analyses():
     # run_tstr()
     return allHomesConcat, fakeHome, cgan
 
-def save_numpy():
-    allHomesConcat, cgan, fakeHome = get_data_cgan(DATA_AMT, fit=False)
-    getData.save_np_house(allHomesConcat)
-    getData.save_np_house(fakeHome)
-
-def save_tstr_numpy():
-    allHomesConcat, cgan, fakeHome = get_data_cgan(DATA_AMT, fit=False)
-    allHomesConcat.data = tstr.transform_to_classifier_data(allHomesConcat.data)
-    fakeHome.data = tstr.transform_to_classifier_data(fakeHome.data)
-    getData.save_np_house(allHomesConcat)
-    getData.save_np_house(fakeHome)
-
-def load_tstr_numpy():
-    allHomes = getData.load_house(labels.home_names.allHomes)
-    fakeHome = getData.load_house(labels.home_names.synthetic)
-    return allHomes, fakeHome
 
 if __name__ == "__main__":
-    if meta.DEBUG: meta.enable_tf_debug(eager=True, debugMode=True)
-    else: meta.enable_tf_debug(eager=False, debugMode=False)
-    allHomesConcat, cgan, fakeHome = get_data_cgan(DATA_AMT, fit=False)
+    # if meta.DEBUG: meta.enable_tf_debug(eager=True, debugMode=True)
+    # else: meta.enable_tf_debug(eager=False, debugMode=False)
+    meta.enable_tf_debug(eager=False, debugMode=False)
 
     # allHomesConcat, cgan = train_vary_disc_epochs()
     # do_analyses()
-    # run_tstr()
-    # save_tstr_numpy()
-    # load_tstr_numpy()
+    allHomesConcat, cgan= get_data_cgan(DATA_AMT, fit=False)
+    fakeHome = postProc.get_all_fixed_synthetic(allHomesConcat, cgan)
+    fakeHome = postProc.order_synthetic_time(fakeHome)
+    if not meta.DEBUG:
+        ppIO.write_og_like_ml_data(fakeHome.data, fakeHome.name)
 
     # plt.show()
 

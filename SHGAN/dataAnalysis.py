@@ -10,7 +10,7 @@ import copy
 
 import labels as lbl
 import filePaths as fp
-from general import meta
+from Sum21.general import meta
 import nnProcessing as nnpp
 import genApi
 import postProcessing as postProc
@@ -213,6 +213,39 @@ def view_portions(df1, name1, df2, name2, doActivities=True):
         plt.savefig(fp.barPlots + name1 + name2 + "barplots.png")
     return genPortions, realPortions
 
+
+def get_history_rename():
+    histRename = {
+        'loss': "Loss", 'mean_absolute_error': "Mean Absolute Error",
+        'cosine_similarity': "Cosine Similarity", 'categorical_crossentropy': "Categorical Crossentropy"
+    }
+    histRenameAux = tuple(histRename.items())
+    for key, value in histRenameAux:
+        histRename["val_" + key] = "Validation " + value
+    return histRename
+
+
+def plot_history(history, name):
+    histRename = get_history_rename()
+    metrics = { histRename[key] : np.reshape(np.asarray(value), (-1,1)) for key,value in history.history.items()}
+    metricTrainScores = [key for key in metrics.keys() if "Validation " not in key]
+    metricValScores = [key for key in metrics.keys() if "Validation " in key]
+    dfs = [pd.DataFrame(np.concatenate((metrics[train], metrics[val]), axis=-1), columns=[train, val])
+           for train, val in zip(metricTrainScores, metricValScores)]
+
+    for df, trainKey in zip(dfs, metricTrainScores):
+        assert trainKey in df.columns
+        fig = plt.figure()
+        df.reset_index(inplace=True, drop=True)
+        ax = sns.lineplot(data = df)
+        title = trainKey + " for " + name
+        ax.set_title(title)
+        ax.set_ylabel(trainKey)
+        ax.set_xlabel("Epochs")
+        if not meta.DEBUG:
+            plt.savefig(fp.tstr + title.replace(' ', ''))
+
+    return metrics
 
 if __name__ == "__main__":
     pass

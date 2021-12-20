@@ -8,8 +8,13 @@ import labels as lbl
 import globalVars as gv
 import houseTypes
 import genApi
-from general import meta
+from Sum21.general import meta
 import nnProcessing as nnpp
+
+def get_time_delta(series:pd.Series, val=0):
+    return pd.Timedelta(val, units=series.dtype.char)
+
+_time_epsilon = pd.Timedelta(1, 'ms')
 
 def collapse_sensor_and_activity(df:pd.DataFrame, removeOld=True):
     df[lbl.rl.sensor] = df[list(lbl.allSensors)].idxmax(axis=1)
@@ -97,7 +102,8 @@ def get_all_fixed_synthetic(realData:houseTypes.house, cgan, rng=gv.MIN_MAX_RNG,
             train=meta.x_y(),
             test=meta.x_y()
         ),
-        name = name
+        name = name,
+        maxTimeDif=realData.maxTimeDif
     )
     def get_fixed_data(y):
         xy = genApi.get_cgen_xy(cgan.generator, y)
@@ -121,6 +127,7 @@ def collapse_raw_x(arr3d:np.ndarray)->pd.DataFrame:
     arr3d = enforce_alt_signal_each_sensor(arr3d) #todo: fix not alternating
     df = to_df(arr3d, lbl.features)
     collapsedDf = collapse_sensor_and_activity(df)
+    collapsedDf = collapsedDf[lbl.rl.correctOrder]
     return collapsedDf
 
 
@@ -128,16 +135,16 @@ def unnorm_time(xy:meta.x_y, oldTimeMax):
     time = xy.x[...,lbl.colOrdinalDict[lbl.rl.time]]
     time = nnpp.unnorm_time(time, oldTimeMax)
     time = time.cumsum(axis=-1)
-    # if time.max() > 8.64e13: #todo
 
-    addToEachWindow =nnpp.inverse_norm_per_day(xy.y[...,0])
-    day = np.argmax(xy.y[...,1:])
-    day *= 8.64e13
+    addToEachWindow =nnpp.inverse_norm_per_day(xy.y[...,lbl.colOrdConditional[lbl.timeMidn]])
+    day = np.argmax(xy.y[...,1:], axis=-1)
+    day *= pd.Timedelta(1, 'd').value
     addToEachWindow += day
+    firstDate = pd.to_datetime(["2010-01-04 00:00:00"]).values.astype(addToEachWindow.dtype)
+    addToEachWindow += firstDate
     addToEachWindow = addToEachWindow[:,np.newaxis]
     addToEachWindow = np.repeat(addToEachWindow, xy.x.shape[1], axis=-1)
-
-    xy.x[...,lbl.colOrdinalDict[lbl.rl.time]] = time + addToEachWindow
+    xy.x[...,lbl.colOrdinalDict[lbl.rl.time]] = time + addToEachWindow.astype(time.dtype)
     return xy
 
 def unnorm_time_mldata(data:meta.ml_data, oldTimeMax):
@@ -150,13 +157,72 @@ def unnorm_time_house(home:houseTypes.house):
     home.data = unnorm_time_mldata(home.data, home.maxTimeDif)
     return home
 
+def _back_to_real_xy(xy:meta.x_y):
+    df = collapse_raw_x(xy.x)
+    df[lbl.rl.time] = pd.to_datetime(df[lbl.rl.time])
+    df.loc[df[lbl.rl.signal] == -1, [lbl.rl.signal]] = 0
+
+    df.loc[df[lbl.rl.sensor].isin(lbl.doorSensors), [lbl.rl.signal]] = \
+        df.loc[df[lbl.rl.sensor].isin(lbl.doorSensors), [lbl.rl.signal]]\
+            .replace({0:lbl.doorFalse,1:lbl.doorTrue})
+
+    df.loc[df[lbl.rl.sensor].isin(lbl.motionSensors), [lbl.rl.signal]] = \
+        df.loc[df[lbl.rl.sensor].isin(lbl.motionSensors), [lbl.rl.signal]]\
+            .replace({0:lbl.motionFalse,1:lbl.motionTrue})
+
+    return df
+
+
 def back_to_real(home:houseTypes.house):
     home = unnorm_time_house(home)
-    home.data.train = collapse_raw_x(home.data.train.x)
-    home.data.test = collapse_raw_x(home.data.test.x)
-    tr = home.data.train
-    te = home.data.test
-    tr.loc[tr['Signal'] == -1, ['Signal']] = 0
-    te.loc[te['Signal'] == -1, ['Signal']] = 0
-    # home.data.train['Time']
+    home.data.train = _back_to_real_xy(home.data.train)
+    home.data.test = _back_to_real_xy(home.data.test)
     return home
+
+
+def is_time_ordered(time: pd.Series):
+    diff = time.diff()
+    diff = diff < pd.Timedelta(0, unit=diff.dtype.char)
+    return diff.sum() <= 1 #first time is always false
+
+def order_synthetic_time(fakeHome:houseTypes.house):
+    print("Order time")
+    fakeHome = back_to_real(fakeHome)
+    def order_df(df:pd.DataFrame):
+        df.reset_index(inplace=True)
+
+        #equal vals with time epsilon
+        sanityCheck = 0
+        while True:
+            assert sanityCheck < gv.WINDOW_SIZE
+            #get where time is less than epsilon, except for start of windows
+            mask = (df[lbl.rl.time].diff() < _time_epsilon) & (df['index'] != 0)
+            print("Checking time epsilon. Iter:", sanityCheck, "\nMask size:", mask.sum(), '\n')
+            if not mask.any():
+                break
+            df.loc[mask, lbl.rl.time] += _time_epsilon
+            sanityCheck += 1
+
+        def get_decreasing():
+            diff = df[lbl.rl.time].diff()
+            decreasing = diff < get_time_delta(diff)
+            print("Decreasing window steps. iter:", iter, "\nDecreasing size:", decreasing.sum(), '\n')
+            decreasing = decreasing[decreasing].index
+            decreasing = np.repeat(decreasing, gv.WINDOW_SIZE)
+            decreasing = np.reshape(decreasing, (-1, gv.WINDOW_SIZE))
+            first = np.arange(gv.WINDOW_SIZE)[None, :]
+            second = np.zeros(decreasing.shape[0])[:, None].astype(decreasing.dtype)
+            decreasing += (first + second)
+            return decreasing.flatten()
+        iter=0
+        while len(decreasing := get_decreasing()) > 0:
+            df.drop(decreasing, inplace=True)
+            iter += 1
+
+        df.index = df['index']
+        df.drop(['index'], axis=1, inplace=True)
+        # assert is_time_ordered(df[lbl.rl.time])
+        return df
+
+    fakeHome.data.transform(order_df)
+    return fakeHome

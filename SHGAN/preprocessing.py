@@ -1,5 +1,5 @@
 import pandas as pd
-from general import meta
+from Sum21.general import meta
 import labels
 import filePaths as fp
 
@@ -49,7 +49,8 @@ def preprocess_all():
         dfIr = preprocess(pd.read_csv(fName))
         dfIr = pd.concat((df, dfIr), axis=0)
         dfIr.fillna(value=0, inplace=True)
-        dfIr[labels.rl.signal] = dfIr[labels.rl.signal].map({"ON":1, "OFF":0, "OPEN":1, "CLOSE":0})
+        dfIr[labels.rl.signal] = dfIr[labels.rl.signal]\
+            .map({labels.motionTrue:1, labels.motionFalse:0, labels.doorTrue:1, labels.doorFalse:0})
         assert dfIr[labels.rl.signal].isin([0,1]).all()
         dfIr.to_csv(_processedPath + suffix, index=False)
         return dfIr

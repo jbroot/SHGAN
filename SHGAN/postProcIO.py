@@ -1,19 +1,37 @@
 import numpy as np
 import os.path
 
+import pandas as pd
+
 import labels
 import filePaths as fp
 import houseTypes
 from general import meta
+import postProcessing as postProc
 
 _xyName = meta.x_y(x="X", y="Y")
 _mlDataName = meta.ml_data(train="Train", test="Test", validate="Validation")
-_suffix = ".npy"
+_npSuffix = ".npy"
+
+def write_og_like_df(df:pd.DataFrame, name):
+    df.to_csv(fp.ogFormat + name.replace(' ', '') + ".csv", index=False)
+
+def write_og_like_ml_data(data:meta.ml_data, name):
+    write_og_like_df(data.train, name + _mlDataName.train)
+    write_og_like_df(data.test, name + _mlDataName.test)
+
+def write_og_like_files(realHome:houseTypes.house, fakeHome:houseTypes.house):
+    fakeHome.maxTimeDif = realHome.maxTimeDif
+    fakeUnnormed = postProc.back_to_real(fakeHome)
+    realUnnormed = postProc.back_to_real(realHome)
+    write_og_like_ml_data(fakeHome.data, fakeHome.name)
+    write_og_like_ml_data(realUnnormed.data, realUnnormed.name)
+    return fakeUnnormed, realUnnormed
 
 #todo: np.savez
 
 def _name_to_filename(name):
-    return fp.numpyArrs + name.replace(' ', '') + _suffix
+    return fp.numpyArrs + name.replace(' ', '') + _npSuffix
 
 def _save_np_arr(arr:np.ndarray, name):
     np.save(_name_to_filename(name), arr)

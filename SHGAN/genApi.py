@@ -5,7 +5,7 @@ from tensorflow.keras import layers
 
 
 import globalVars as gv
-from general import meta, custActivations as custAct
+from Sum21.general import meta, custActivations as custAct
 import labels
 # import discApi
 # import cnnApi

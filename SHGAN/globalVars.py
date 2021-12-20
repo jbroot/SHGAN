@@ -1,7 +1,9 @@
 import labels
-from general import meta
+from Sum21.general import meta
 
-NOISE_DIM = 64 if meta.EXPERIMENTAL else 16
+EXPERIMENTAL = False
+
+NOISE_DIM = 64 if EXPERIMENTAL else 16
 BATCH_SIZE = 128
 WINDOW_SIZE = 32
 FEATURE_SIZE = len(labels.features)

@@ -2,13 +2,15 @@ import copy
 
 import pandas as pd
 import numpy as np
-from general import meta
+from Sum21.general import meta
 
 import preprocessing as pp
 import dataProcessing as dp
 import labels
 import globalVars as gv
 import houseTypes
+
+
 
 def window_stack(arr, width=32, stepsize=None):
     if stepsize is None:
@@ -60,7 +62,9 @@ class normed_df:
         tmp[w.columns] = w
         tmp.fillna(value=0, inplace=True)
         #to time from midnight
-        self.df[labels.timeMidn] = (tmp[labels.rl.time] - tmp[labels.rl.time].dt.normalize()).astype(int)
+        self.df[labels.timeMidn] = (tmp[labels.rl.time] - tmp[labels.rl.time].dt.normalize())
+        self.df[labels.timeMidn] = self.df[labels.timeMidn]\
+            .astype("int64" if tmp[labels.rl.time].dtype.type == np.datetime64 else "int32")
         self.df[labels.rl.time] = self.df[labels.timeMidn]
         self.df = pd.concat((self.df, tmp[labels.week]), axis=1)
         return
@@ -99,8 +103,8 @@ class normed_df:
             xy.y[...,0] = norm_since_mid(xy.y[...,0])
         return xy
 
-def inverse_norm_per_day(timeArr):
-    timeArr = ((timeArr / 2) + 0.5) * 8.64e13
+def inverse_norm_per_day(timeArr, maxTime=8.64e13):
+    timeArr = ((timeArr / 2) + 0.5) * maxTime
     return timeArr
 
 def get_windows(data=None, name=''):
@@ -119,6 +123,30 @@ def get_windows_by_house(firstN=None):
     for i, home in enumerate(allHomes):
         homeWindows.append(get_windows(home, name="H" + str(i+1)))
     return homeWindows
+
+def transform_windows_activity_label(xy:meta.x_y):
+    nTimeSteps = xy.x.shape[1]
+    timeLabels = np.repeat(xy.y[:,np.newaxis], nTimeSteps, axis=1)
+    xy.y = xy.x[...,-1, labels.pivots.activities.start:labels.pivots.activities.stop]
+    xy.x = np.concatenate((xy.x, timeLabels), axis=-1)
+    return xy
+
+
+def get_windows_activity_label(firstN=None, activityRng=(0,1)):
+    allHomes = get_all_concat_windows(firstN)
+    allHomes.data.transform(transform_windows_activity_label)
+    def map_y(xy:meta.x_y):
+        minY = xy.y.min()
+        maxY = xy.y.max()
+        xy.y[xy.y==minY] = activityRng[0]
+        xy.y[xy.y==maxY] = activityRng[1]
+        return xy
+    allHomes.data.transform(map_y)
+    return allHomes
+
+def flatten_x(xy:meta.x_y):
+    xy.x = np.reshape(xy.x, (-1, xy.x.shape[1] * xy.x.shape[-1]))
+    return xy
 
 
 if __name__ == "__main__":
